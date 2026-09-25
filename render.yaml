@@ -9,7 +9,3 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.18.0
-      - key: OPENSKY_CLIENT_ID
-        sync: false
-      - key: OPENSKY_CLIENT_SECRET
-        sync: false

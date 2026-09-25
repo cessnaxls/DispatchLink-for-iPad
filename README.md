@@ -1,18 +1,15 @@
-# DispatchLink iPad 1.1
+# DispatchLink iPad v1.2
 
-Git + Render web port of DispatchLink.
+Git + Render iPad-oriented DispatchLink web app.
 
-## Working in this milestone
-- FAA / US random aircraft assignment using the FAA Releasable Aircraft registry
-- Make includes / Model includes filtering
-- 7-day server cache with FAA fallback download URLs
-- Optional HexDB enrichment for Mode-S/operator
-- Global Live assignment using OpenSky airborne states + HexDB metadata
-- Registration prefix / make / model filters
-- FR24 paste parser, history table/filtering, random rig builder and SimBrief launcher
-- iPad touch UI; no database
+## Live aircraft generator
+- Global Live only; FAA generator removed.
+- No API keys or environment secrets required.
+- Primary live source: ADSB.lol.
+- Automatic fallback: Airplanes.live.
+- Samples current airborne aircraft in multiple high-traffic world regions.
+- Registration prefix, manufacturer, and model/type substring filters.
+- HexDB is used opportunistically for manufacturer/operator/serial/year enrichment.
 
-## Render
-Push the repository to GitHub and create a Render Blueprint. `render.yaml` is included.
-
-OpenSky credentials are optional. For authenticated live searches, set `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` in Render. Do not commit secrets to Git. FAA assignment does not require OpenSky.
+## Deploy
+Upload the CONTENTS of this folder to the root of your GitHub `main` branch. `render.yaml` must be visible at the repository root. Create a Render Blueprint from the repository.
