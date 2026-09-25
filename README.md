@@ -1,4 +1,4 @@
-# DispatchLink iPad v1.3
+# DispatchLink iPad v1.3.1
 
 Global-only iPad/Render port of the desktop DispatchLink OpenSky generator.
 
@@ -14,3 +14,7 @@ Optional Render environment variables:
 - `OPENSKY_PASSWORD`
 
 No FAA generator is included. No database is required.
+
+
+### Diagnostics
+If OpenSky cannot be reached, the Global button automatically runs a small bounded OpenSky probe and reports the underlying network failure instead of only `fetch failed`. Server logs also show all four attempts and HTTP/network results.
