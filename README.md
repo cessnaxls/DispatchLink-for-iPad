@@ -20,5 +20,5 @@ No FAA generator is included. No database is required.
 If OpenSky cannot be reached, the Global button automatically runs a small bounded OpenSky probe and reports the underlying network failure instead of only `fetch failed`. Server logs also show all four attempts and HTTP/network results.
 
 
-## v1.3.2
+## v1.4.0
 OpenSky transport now uses Node HTTPS forced to IPv4 to mirror the working desktop network path more closely and avoid Undici connect-family timeouts. Generator logic is unchanged.

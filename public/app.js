@@ -9,4 +9,24 @@ $('randomTrip').onclick=()=>{let n=Math.max(1,Math.min(+$('legs').value||1,rows.
 $('ofp').onclick=()=>{let ids=selected.size?[...selected]:rows.map((_,i)=>i);if(!ids.length)return log('No flights available for OFP.');ids.forEach(i=>{let r=rows[i];open(`https://dispatch.simbrief.com/options/custom?orig=${encodeURIComponent(r.dep)}&dest=${encodeURIComponent(r.arr)}&type=${encodeURIComponent(r.ac)}&reg=${encodeURIComponent(r.reg)}&fltnum=${encodeURIComponent(r.flight)}`,'_blank')});log(`Opened ${ids.length} SimBrief OFP request(s).`)};
 function showAssignment(a){assignment=a;let el=$('assignment');el.classList.remove('empty');el.innerHTML=`<strong>${a.tail||'—'}</strong><div class="aircraftTitle">${a.make||'—'} ${a.model||''}</div><div class="assignmentGrid"><span>Serial</span><b>${a.serial||'—'}</b><span>Year</span><b>${a.year||'—'}</b><span>Mode-S</span><b>${(a.icao24||'—').toUpperCase()}</b><span>Operator</span><b>${a.operator||'—'}</b><span>Source</span><b>${a.source||'—'}</b></div>`}
 async function api(url){let r=await fetch(url);let j=await r.json().catch(()=>({error:`HTTP ${r.status}`}));if(!r.ok)throw Error(j.error||`HTTP ${r.status}`);return j}
-$('global').onclick=async()=>{try{log('Loading OpenSky live states and applying Global filters…');$('global').disabled=true;let q=new URLSearchParams({prefix:$('prefix').value,make:$('gmake').value,model:$('gmodel').value});let a=await api('/api/global/random?'+q);showAssignment(a);log(`Live assignment ${a.tail||a.icao24}: ${a.make} ${a.model}.`)}catch(e){log('Global: '+e.message);try{log('Running OpenSky IPv4 connection probe…');const p=await api('/api/opensky/probe');log(`OpenSky probe: HTTP ${p.http} in ${p.elapsedMs} ms (${p.auth}).`)}catch(pe){log('OpenSky probe: '+pe.message)}}finally{$('global').disabled=false}};$('copy').onclick=()=>assignment&&navigator.clipboard.writeText(JSON.stringify(assignment,null,2));
+$('global').onclick=async()=>{
+  $('global').disabled=true;
+  try{
+    const filters={prefix:$('prefix').value,make:$('gmake').value,model:$('gmodel').value};
+    let a=null;
+    try{
+      log('Loading OpenSky live states directly from this iPad…');
+      const r=await fetch('https://opensky-network.org/api/states/all',{headers:{Accept:'application/json'}});
+      if(!r.ok)throw Error(`OpenSky HTTP ${r.status}`);
+      const j=await r.json(); const states=j.states||[];
+      if(!states.length)throw Error('OpenSky returned no live states.');
+      log(`Received ${states.length.toLocaleString()} OpenSky states on iPad; applying desktop generator logic…`);
+      const rr=await fetch('/api/global/from-states',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...filters,states})});
+      const jj=await rr.json().catch(()=>({error:`HTTP ${rr.status}`})); if(!rr.ok)throw Error(jj.error||`HTTP ${rr.status}`); a=jj;
+    }catch(directErr){
+      log(`Direct OpenSky unavailable (${directErr.message}); trying server path…`);
+      let q=new URLSearchParams(filters); a=await api('/api/global/random?'+q);
+    }
+    showAssignment(a); log(`Live assignment ${a.tail||a.icao24}: ${a.make} ${a.model}.`);
+  }catch(e){log('Global: '+e.message)}finally{$('global').disabled=false}
+};$('copy').onclick=()=>assignment&&navigator.clipboard.writeText(JSON.stringify(assignment,null,2));

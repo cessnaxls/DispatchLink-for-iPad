@@ -55,9 +55,28 @@ async function openskyGet(url,timeout=25000){let headers=await authHeaders();let
 async function states(){const r=await openskyGet(`${OPEN_SKY_ROOT}/states/all`,25000);if(r.status===429)throw Error('OpenSky rate limit hit.');if(r.status===401||r.status===403)throw Error('OpenSky unauthorized (check OAuth2 client or legacy basic).');if(!r.ok)throw Error(`OpenSky HTTP ${r.status}`);const j=await r.json();return j.states||[]}
 async function hexInfo(hex){try{const r=await fetchTimeout(`${HEXDB_ROOT}/api/v1/aircraft/${hex.toLowerCase()}`,{headers:UA},20000,'HexDB');if(r.status===404)return {};if(!r.ok)return {};return await r.json()}catch{return {}}}
 async function lastArrival(hex){const now=Math.floor(Date.now()/1000),begin=now-48*3600;try{const r=await openskyGet(`${OPEN_SKY_ROOT}/flights/aircraft?icao24=${encodeURIComponent(hex)}&begin=${begin}&end=${now}`,30000);if([401,403,404,429].includes(r.status))return null;if(!r.ok)return null;const flights=await r.json();flights.sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));for(const f of flights){if(f.estArrivalAirport)return f.estArrivalAirport}}catch{}return null}
-app.get('/api/health',(q,s)=>s.json({ok:true,name:'DispatchLink iPad',version:'1.3.2',generator:'OpenSky+HexDB'}));
+app.get('/api/health',(q,s)=>s.json({ok:true,name:'DispatchLink iPad',version:'1.4.0',generator:'OpenSky+HexDB',browserOpenSky:true}));
 app.get('/api/opensky/probe',async(q,res)=>{const started=Date.now();try{const r=await openskyGet(`${OPEN_SKY_ROOT}/states/all?lamin=39&lomin=-87&lamax=41&lomax=-85`,15000);const body=await r.text();return res.status(r.ok?200:502).json({ok:r.ok,http:r.status,elapsedMs:Date.now()-started,auth:(await authHeaders()).Authorization?'oauth':(clean(process.env.OPENSKY_USERNAME)&&clean(process.env.OPENSKY_PASSWORD)?'basic':'anonymous'),bodyPreview:body.slice(0,160)})}catch(e){return res.status(502).json({ok:false,elapsedMs:Date.now()-started,error:errDetail(e)})}});
 app.get('/api/config',(q,s)=>s.json({generator:'OpenSky+HexDB',oauthConfigured:!!(clean(process.env.OPENSKY_CLIENT_ID)&&clean(process.env.OPENSKY_CLIENT_SECRET)),basicConfigured:!!(clean(process.env.OPENSKY_USERNAME)&&clean(process.env.OPENSKY_PASSWORD)),anonymousFallback:true,maxChecks:600}));
+async function chooseFromStates(live,regPrefix,makeContains,modelContains){
+  if(!Array.isArray(live)||!live.length)throw Error('OpenSky has no live states.');
+  const hexes=shuffle(live.filter(r=>r&&r[0]).map(r=>String(r[0]).toLowerCase()));
+  const maxChecks=Math.min(hexes.length,600);
+  for(const hx of hexes.slice(0,maxChecks)){
+    const info=await hexInfo(hx); if(!info||!Object.keys(info).length)continue;
+    const reg=clean(info.Registration),mk=clean(info.Manufacturer),md=clean(info.Type||info.ICAOTypeCode);
+    if(regPrefix&&!reg.toUpperCase().startsWith(regPrefix.toUpperCase()))continue;
+    if(makeContains&&!mk.toLowerCase().includes(makeContains.toLowerCase()))continue;
+    if(modelContains&&!md.toLowerCase().includes(modelContains.toLowerCase()))continue;
+    let last='—'; try{last=await lastArrival(hx)||'—'}catch{}
+    return {tail:reg,make:mk,model:md,serial:info.SerialNo||info.Serial||info.MSN||'—',year:info.YearBuilt||info.Year||'—',icao24:hx,operator:info.RegisteredOwners||info.Operator||info.OperatorFlagCode||'—',last_position:last,source:'OpenSky+HexDB',checked:maxChecks};
+  }
+  throw Object.assign(Error('No live aircraft matched those Global filters.'),{status:404});
+}
+app.post('/api/global/from-states',async(req,res)=>{
+  const regPrefix=clean(req.body.prefix),makeContains=clean(req.body.make),modelContains=clean(req.body.model),live=req.body.states;
+  try{return res.json(await chooseFromStates(live,regPrefix,makeContains,modelContains))}catch(e){return res.status(e.status||502).json({error:e.message||'Global lookup failed.'})}
+});
 app.get('/api/global/random',async(req,res)=>{const regPrefix=clean(req.query.prefix), makeContains=clean(req.query.make), modelContains=clean(req.query.model);try{const live=await states();if(!live.length)throw Error('OpenSky has no live states.');const hexes=shuffle(live.filter(r=>r&&r[0]).map(r=>String(r[0]).toLowerCase()));const maxChecks=Math.min(hexes.length,600);for(const hx of hexes.slice(0,maxChecks)){const info=await hexInfo(hx);if(!info||!Object.keys(info).length)continue;const reg=clean(info.Registration), mk=clean(info.Manufacturer), md=clean(info.Type||info.ICAOTypeCode);if(regPrefix&&!reg.toUpperCase().startsWith(regPrefix.toUpperCase()))continue;if(makeContains&&!mk.toLowerCase().includes(makeContains.toLowerCase()))continue;if(modelContains&&!md.toLowerCase().includes(modelContains.toLowerCase()))continue;const last=await lastArrival(hx)||'—';return res.json({tail:reg,make:mk,model:md,serial:info.SerialNo||info.Serial||info.MSN||'—',year:info.YearBuilt||info.Year||'—',icao24:hx,operator:info.RegisteredOwners||info.Operator||info.OperatorFlagCode||'—',last_position:last,source:'OpenSky+HexDB',checked:maxChecks})}return res.status(404).json({error:'No live aircraft matched those Global filters.'})}catch(e){return res.status(502).json({error:e.message||'Global lookup failed.',detail:errDetail(e)})}});
 app.post('/api/parse-fr24',(req,res)=>{const t=String(req.body.text||''),lines=t.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),rows=[],rx=/(\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4}).*?\b([A-Z0-9]{3,4})\b.*?\b([A-Z][A-Z0-9-]{2,9})\b.*?\b([A-Z0-9]{2,3}\d{1,5}[A-Z]?)\b.*?\b([A-Z]{3,4})\b.*?\b([A-Z]{3,4})\b.*?(\d{2}:?\d{2})\s*(?:Z)?.*?(\d{2}:?\d{2})/i;for(const l of lines){const m=l.match(rx);if(m)rows.push({dof:m[1],ac:m[2].toUpperCase(),reg:m[3].toUpperCase(),flight:m[4].toUpperCase(),dep:m[5].toUpperCase(),arr:m[6].toUpperCase(),std:m[7]+'Z',sta:m[8]+'Z'})}res.json({rows,parsed:rows.length})});
-app.listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('DispatchLink iPad 1.3.2 ready — OpenSky+HexDB desktop generator port'));
+app.listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('DispatchLink iPad 1.4.0 ready — browser-first OpenSky + HexDB'));
